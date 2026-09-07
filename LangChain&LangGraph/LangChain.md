@@ -3809,13 +3809,221 @@ MCP遵循客户端-服务器架构（CS架构）
 pip install langchain-mcp-adapters
 ```
 
+```python
+McpServer.py
+"""
+  @Author:huchaofan
+  @Time:2026/9/7
+  @Desc:mcp案例实战
+"""
+import json
+import os
+import httpx
+from dotenv import load_dotenv
+from mcp.server.fastmcp import FastMCP
+from loguru import logger
+from redisvl.cli import mcp
+
+# 案例跑在python3.12版本下
+
+# 加载 .env 文件
+load_dotenv()  # 默认加载当前目录下的 .env 文件
+
+# 读取天气环境变量
+api_key = os.getenv("Weather_KEY")
+
+# 创建fastmcp实例。用于启动天气服务器SSE服务
+# 仅本机能访问
+# mcp = FastMCP("WeatherServerSSE", host="127.0.0.1", port=8080)
+# 同一 WiFi 下的同事/家人都能访问
+mcp = FastMCP("WeatherServerSSE", host="0.0.0.0", port=8000)
+
+
+@mcp.tool()  # tool calling的加强版
+def get_weather(city: str) -> str:
+    # 第一步 构建请求url
+    url = "https://api.openweathermap.org/data/2.5/weather"
+
+    # 第二步 设置查询参数，包括城市名、API Key、单位和语言
+    params = {
+        "q": city,
+        "appid": api_key,
+        "units": "metric",
+        "lang": "zh-cn",
+    }
+
+    # 第三步 发送 GET请求 获取天气数据
+    response = httpx.get(url, params=params, timeout=30)
+
+    # 第四步 解析响应内容为 JSON 并序列化为字符串返回
+    data = response.json()
+    logger.info(f"查询{city} 天气结果：{data}")
+    # json.dumps() 把一个 Python 对象（比如字典、列表）序列化（或者叫转换）成一个 JSON 格式的字符串
+    return json.dumps(data)
+
+
+if __name__ == "__main__":
+    logger.info("启动 MCP SSE 天气服务器，监听 http://0.0.0.0:8000/sse")
+    # 运行MCP客户端，使用Server-Sent Events(SSE) 作为传输协议
+    mcp.run(transport="sse")
+    # mcp.run(transport="stdio")
+
+"""
+适配 MCP SSE 的流式处理特性：
+200 OK：请求处理完成，服务器立即返回最终结果
+202 Accepted：请求已接收并受理，服务器会在后台处理（比如：调用工具、执行 MCP 指令），处理完成后通过 SSE 流式将结果推送给客户端
+"""
+```
+
+```json
+mcp.json
+{
+  "mcpServers": {
+    "weather": {
+      "url": "http://127.0.0.1:8000/sse",
+      "transport": "sse"
+    },
+    "fetch": {
+      "command": "uvx",
+      "args": [
+        "mcp-server-fetch"
+      ],
+      "transport": "stdio"
+    }
+  }
+}
+```
+
+```py
+McpCliend_DeepSeek.py
+"""
+  @Author:huchaofan
+  @Time:2026/9/7
+  @Desc:
+"""
+import asyncio
+import json
+import os
+from typing import Any, Dict
+from langchain.chat_models import init_chat_model
+from langchain_mcp_adapters.client import MultiServerMCPClient
+from loguru import logger
+from langchain.agents import create_agent
+
+
+def load_servers(file_path: str = "mcp.json") -> Dict[str, Any]:
+    with open(file_path, "r", encoding="utf-8") as file:
+        data = json.load(file)
+        return data.get("mcpServers", {})
+
+
+async def run_chat_loop() -> None:
+    servers_cfg = load_servers()
+    mcp_client = MultiServerMCPClient(servers_cfg)
+    tools = await mcp_client.get_tools()
+    logger.info(f"已加载 {len(tools)} 个 MCP 工具： {[t.name for t in tools]}")
+
+    llm = init_chat_model(
+        model="deepseek-v4-pro",
+        api_key=os.getenv("deepseek_api"),
+        base_url="https://api.deepseek.com",
+        # DeepSeek V4 官方唯一正确关闭思考模式写法
+        extra_body={"thinking": {"type": "disabled"}}
+    )
+
+    # langchain1.0智能体要求
+    agent = create_agent(
+        model=llm,  # 带个模型
+        tools=tools,  # 带个工具类
+        system_prompt=(  # 带个提示词
+            "你是AI智能运维助手，必须使用工具回答问题。"
+            "可以调用天气、网页抓取工具，准确回答用户问题。"
+        )
+    )
+
+    logger.info("\n🤖AI智能运维助手已启动，输入 'quit' 退出")
+    while True:
+        user_input = input("\n你: ").strip()
+
+        if user_input.lower() == "quit":
+            break
+
+        try:
+            result = await agent.ainvoke({"messages": [("user", user_input)]})
+            print(f"\nAI: {result['messages'][-1].content}")
+        except Exception as exc:
+            logger.error(f"\n异常出错: {exc}")
+
+    logger.info("======》会话已结束，Bye!")
+
+
+if __name__ == "__main__":
+    print("---------启动中---------\n")
+    print("测试案例:"
+          "① 北京天气如何：正常返回天气数据\n"
+          "② MCP文档总结：返回完整文档摘要（警告为依赖提示，不影响）")
+
+    asyncio.run(run_chat_loop())
+
+```
+
+# Agent 智能体
+
+## Agent 运行逻辑总体概述
+
+<img src="image/AI Agent运行全流程泳道图.png" alt="Agent" style="zoom:60%;" align="left"/>
+
+## LangChain、LangGraph、DeepAgent 到底差在哪？
+
+1. LangChain 是你设计好每一步让它按顺序走（提示词 | 调用大模型 | 格式化输出）
+2. LangGraph 是你画好流程图索骥、还能回头重试
+3. DeepAgent 则是你说个目标，它自己拆任务、安排子Agent、反思改进--你根本管中间过程
+
+## Agent智能体
+
+### Tool VS Agent
+
+LangChain中的Tool和Agent是两个不同层次的概念，各自承担不同的职责
+
+### Tool
+
+一句话：Tool 工具 = 能力得到封装
+
+Tool是一个可调用的函数，它封装了一个工具的能力，类似Java中的Util工具类
+
+> 结论：Tool 本身没有决策能力，它只是被动地等待被调用。
+
+### Agent
+
+一句话：Agent 决策者 = 如何使用这些能力
+
+Agent是一个决策引擎：
+
+- 决定什么时候调用哪个Tool
+- 根据上下文决定下一步做什么
+- 处理Tool返回的结果并决定是否需要继续调用其他 Tool
+
+> 结论：Agent的核心是 推理 + 行动（Reason Act），也就是ReAct模式
+
+## 代码案例
+
+工具+判断
 
 
 
+### A2A2A
 
+Agent-to-Agent（A2A）协作案例 - LangChain1.0 + 通义千问 qwen-plus
 
+模拟携程订机票、美团订酒店、滴滴打车的跨平台智能协作流程，
 
+核心是让不同领域的专属 Agent 分工协作、完成完整的出行服务闭环
 
+业务场景：用户提出“从北京飞往上海、订浦东机场附近酒店、从机场打车到酒店”的完整需求。
+
+系统通过三个领域子Agent + 1 个总协调 Agent 协作完成。
+
+A2A 调用关系（）
 
 
 
