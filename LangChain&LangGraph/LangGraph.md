@@ -98,24 +98,35 @@ class InputSchema(TypedDict):
 
 ### output_schema（对外出参规范）
 
-限制invoke 执行结束返回结果里只包含指定 key；内部大量中间、私有状态不会暴露给调用方，实现输出收口、隐私隔离。
+限制invoke 执行**结束返回结果**里只包含指定 key；内部大量中间、私有状态不会暴露给调用方，实现输出收口、隐私隔离。
 
 ```python
 # 3. output_schema：约束图执行结束后，对外返回的结果集合
 # 内部一堆中间、私有字段都会被隐藏，只返回此处声明的key
+# output_schema 只对最终的返回值做限制，不影响中间节点的数据传递。
 class OutputSchema(TypedDict):
     final_answer:str
 ```
 
 > ### state_schema：内部完整容器；input_schema：入参白名单；output_schema：出参白名单
 
+## Reducers
 
+官网：https://docs.langchain.org.cn/oss/python/langgraph/graph-api#reducers
 
+是什么：规约函数
 
+规约函数决定了节点产生的更新如何作用到 State。State 中的每个字段都拥有自己的独立规约函数。
 
+如果未显式指定，则默认所有对该字段的更新都会直接覆盖旧值。
 
+### 状态合并策略（Reducers）
 
+Reducer是定义多个节点之间State如何更新的（覆盖、合并、添加等）
 
+### Reducer 常用函数
+
+<img src="image/Reducer 常用函数.png" alt="图片描述" width="100%">
 
 
 
