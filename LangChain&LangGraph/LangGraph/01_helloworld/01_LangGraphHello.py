@@ -1,8 +1,8 @@
 # pip install -U langgraph
 # pip install grandalf
-
+import uuid
 from typing import TypedDict
-from langgraph.constants import START, END
+from langgraph.constants import START, END, END
 from langgraph.graph import StateGraph
 
 
@@ -53,5 +53,14 @@ print(result["greeting"])
 print(app.get_graph().print_ascii())
 print("-" * 20)
 
-# 打印图的Mermaid代码可视化结构并通过processon编辑器查看
+# 打印图的Mermaid代码可视化结构并通过processon（https://www.processon.com/mermaid）编辑器查看
 print(app.get_graph().draw_mermaid())
+
+# 生成 PNG并写入文件，需要科学上网
+png_bytes = app.get_graph().draw_mermaid_png(max_retries=2,retry_delay=2.0)
+output_path = "langgraph" + str(uuid.uuid4())[:8] + ".png"
+with open(output_path, "wb") as f:
+    f.write(png_bytes)
+print(f"图片已生成：{output_path}")
+
+
