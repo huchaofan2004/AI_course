@@ -44,11 +44,9 @@ LangChain和LangGraph之间的关系：LangGraph是LangChain工作流的高级�
 
 通过 `graph.get_graph()`方法可以获取图的结构信息，包括节点和边的详细信息。
 
+## 标准完整流程小总结
 
-
-
-
-
+<img src="image/LangGraph总结.png" alt="图片描述" width="100%">
 
 
 
