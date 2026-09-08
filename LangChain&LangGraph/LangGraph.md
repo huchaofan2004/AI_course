@@ -46,7 +46,7 @@ LangChain和LangGraph之间的关系：LangGraph是LangChain工作流的高级�
 
 ## 标准完整流程小总结
 
-<img src="image/LangGraph总结.png" alt="图片描述" width="100%">
+<img src="./image/LangGraph总结.png" alt="图片描述" width="100%">
 
 # Graph API 之 Graph(图)
 
@@ -126,7 +126,7 @@ Reducer是定义多个节点之间State如何更新的（覆盖、合并、添�
 
 ### Reducer 常用函数
 
-<img src="image/Reducer 常用函数.png" alt="图片描述" width="100%">
+<img src="./image/Reducer 常用函数.png" alt="图片描述" width="100%">
 
 
 
