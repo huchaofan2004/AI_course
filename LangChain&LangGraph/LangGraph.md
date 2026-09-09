@@ -128,33 +128,79 @@ Reducer是定义多个节点之间State如何更新的（覆盖、合并、添�
 
 <img src="./image/Reducer 常用函数.png" alt="图片描述" width="100%">
 
+# Graph API之Node(节点)
 
+官网：https://docs.langchain.com/oss/javascript/langgraph/graph-api#nodes
 
+是什么：节点(Node)就是是Python函数（可以是同步的，也可以是异步的）
 
+Node时LangGraph中的一个基本处理单元，代表工作流中的一个操作步骤，可以是一个Agent、调用大模型、工具或一个函数（**说白了就是绑定一个python函数，具体逻辑可以干任何事情**）
 
+## 节点缓存Node Caching
 
+key_func用于根据节点的输入生成缓存键，默认情况下是使用pickle对输入进行hash运算的结果。
 
+ttl，即缓存的生存时间（以秒为单位）。如果未指定，缓存将永不过期。
 
+```py
+# 添加节点
+builder.add_node(node="expensive_node",action=expensive_node,
+    # 不用传key_fn，底层自动用默认逻辑
+    cache_policy=CachePolicy(ttl=8)
+)
 
+.....
 
+# 编译图，指定内存缓存
+app = builder.compile(cache=InMemoryCache())
+```
 
+##  错误处理和重试机制（LangGraph 节点重试策略）
 
+**默认重试策略**：max_attempts=5，对Exception重试、对ValueError/TypeError等不重试，异常过滤列表完全相同；
+**自定义重试策略**：max_attempts=5 + custom_retry_on[自定义重试条件判断函数]，仅对包含{模拟API调用失败}的异常重试；throw new RuntimeExp("模拟API调用失败")
+**不可重试测试**：ValueError直接抛错，无重试，max_attempts=3
 
+> **节点函数报错 → 重新从头执行整个节点函数**
 
+## 流式处理(Streaming)
 
+官网：https://docs.langchain.com/oss/python/langgraph/streaming
 
+values：每步结束后，输出完整的当前状态；
 
+updates：每步结束后，只输出变化的部分；
 
+messages：专门实时输出 LLM 的每一个字 / 词，还带相关信息（比如是哪个步骤调用的 LLM）；
 
+custom：只输出你自定义的消息（比如进度提示）；
 
+debug：输出所有细节，方便调试。
 
+# Graph API之Edge(边)
 
+官网：https://docs.langchain.com/oss/javascript/langgraph/graph-api#edges
+是什么：Edge定义了节点之间的连接和执行顺序，以及不同节点之间是如何通讯的，一个节点可以有多个出边（指向多个节点），多个节点也可以同时指向同一个节点（Map-Reduce）
 
+**Normal Edges: 普通边**：直接从一个节点连接到下一个节点。
 
+## 条件边
 
+**Conditional Edges: 条件边**：调用函数以确定接下来要前往哪个（哪些）节点。
 
+### 可控循环
 
+需要注意的是，这种带循环的图结构，有一个隐藏的问题：
 
+图执行过程当中，可能因为某些原因，导致一直在循环内循环往复执行，因此LangGraph提供了一个**强制使图的执行终止的递归限制参数**
+
+递归限制设定了图在抛出错误之前允许执行的超级步骤数量，默认值25，
+
+在graph.invoke的config参数中指定。在经过指定数量的超级步骤后，图还没有自然停止执行时，**LangGraph会抛出异常GraphRecursionError**。
+
+### Conditional Entry Point: 条件入口点
+
+调用一个函数来确定当用户输入到达时，首先调用哪个（些）节点。 
 
 
 
